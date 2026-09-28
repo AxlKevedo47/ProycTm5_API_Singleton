@@ -1,0 +1,6 @@
+@ProycTm5_API_Singleton_HostAddress = http://localhost:5035
+
+GET {{ProycTm5_API_Singleton_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
