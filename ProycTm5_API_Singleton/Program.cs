@@ -1,8 +1,13 @@
+using ProycTm5_API_Singleton.Services;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+builder.Services.AddSingleton<IEmpleadoService, EmpleadoSingletonService>();//CC22070: Registro del servicio Singleton para IEmpleadoService y su implementación EmpleadoSingletonService
+
 
 var app = builder.Build();
 
