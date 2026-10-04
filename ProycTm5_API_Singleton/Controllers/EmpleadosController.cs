@@ -1,27 +1,34 @@
 using Microsoft.AspNetCore.Mvc;
 using ProycTm5_API_Singleton.Models;
+using ProycTm5_API_Singleton.Services;
 
-namespace ProycTm5_API_Singleton.Controllers;   // JQ203: Se Plantea el CRUD 
+namespace ProycTm5_API_Singleton.Controllers;   // JQ203: Se Plantea el CRUD
 
 [ApiController]
 [Route("api/[controller]")]
 public class EmpleadosController : ControllerBase
 {
-    private static readonly List<Empleado> Empleados = [];
-    private static readonly string[] AreasValidas = ["Ventas", "Producción", "Transporte", "Marketing"];
+    //MM19037: Se elimina el almacenamiento estático propio del controlador (List<Empleado> y AreasValidas) para delegar el funcionamiento al servicio
+    private readonly IEmpleadoService _empleadoService;
 
-    // JQ203: Validación de las áreas permitidas para los empleados
+    //MM19037: Se agrega constructor con inyección de IEmpleadoService para que el controlador use la instancia Singleton
+    public EmpleadosController(IEmpleadoService empleadoService)
+    {
+        _empleadoService = empleadoService;
+    }
 
     [HttpGet]
     public ActionResult<IEnumerable<Empleado>> ObtenerTodos()
     {
-        return Ok(Empleados);
+        //MM19037: Se delega la obtención de empleados al servicio
+        return Ok(_empleadoService.ObtenerTodos());
     }
 
     [HttpGet("{id:int}")]
     public ActionResult<Empleado> ObtenerPorId(int id)
     {
-        var empleado = Empleados.FirstOrDefault(e => e.Id == id);
+        //MM19037: Se delega la búsqueda por ID al servicio
+        var empleado = _empleadoService.ObtenerPorId(id);
 
         return empleado is null ? NotFound() : Ok(empleado);
     }
@@ -29,56 +36,38 @@ public class EmpleadosController : ControllerBase
     [HttpPost]
     public ActionResult<Empleado> Crear(Empleado empleado)
     {
-        if (!AreaEsValida(empleado.Area))
+        //MM19037: Se usa la validación de área del servicio
+        if (!_empleadoService.AreaEsValida(empleado.Area))
         {
             return BadRequest("El área debe ser Ventas, Producción, Transporte o Marketing.");
         }
 
-        empleado.Id = Empleados.Count == 0 ? 1 : Empleados.Max(e => e.Id) + 1;
-        Empleados.Add(empleado);
+        //MM19037: La asignación del ID y creación del usuario se delega al servicio
+        var empleadoCreado = _empleadoService.Crear(empleado);
 
-        return CreatedAtAction(nameof(ObtenerPorId), new { id = empleado.Id }, empleado);
+        return CreatedAtAction(nameof(ObtenerPorId), new { id = empleadoCreado.Id }, empleadoCreado);
     }
 
     [HttpPut("{id:int}")]
     public IActionResult Actualizar(int id, Empleado empleadoActualizado)
     {
-        var empleado = Empleados.FirstOrDefault(e => e.Id == id);
-
-        if (empleado is null)
-        {
-            return NotFound();
-        }
-
-        if (!AreaEsValida(empleadoActualizado.Area))
+        if (!_empleadoService.AreaEsValida(empleadoActualizado.Area))
         {
             return BadRequest("El área debe ser Ventas, Producción, Transporte o Marketing.");
         }
 
-        empleado.Nombre = empleadoActualizado.Nombre;
-        empleado.Cargo = empleadoActualizado.Cargo;
-        empleado.Area = empleadoActualizado.Area;
+        //MM19037: Se delega la actualización al servicio; si devuelve null significa que el empleado no existe
+        var empleado = _empleadoService.Actualizar(id, empleadoActualizado);
 
-        return NoContent();
+        return empleado is null ? NotFound() : NoContent();
     }
 
     [HttpDelete("{id:int}")]
     public IActionResult Eliminar(int id)
     {
-        var empleado = Empleados.FirstOrDefault(e => e.Id == id);
+        //MM19037: Se delega la eliminación al servicio, que devuelve false si el empleado no existe
+        var eliminado = _empleadoService.Eliminar(id);
 
-        if (empleado is null)
-        {
-            return NotFound();
-        }
-
-        Empleados.Remove(empleado);
-
-        return NoContent();
-    }
-
-    private static bool AreaEsValida(string area)
-    {
-        return AreasValidas.Contains(area, StringComparer.OrdinalIgnoreCase);
+        return eliminado ? NoContent() : NotFound();
     }
 }

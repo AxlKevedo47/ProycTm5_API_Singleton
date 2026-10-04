@@ -1,5 +1,7 @@
-﻿using System;
+using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 using ProycTm5_API_Singleton.Models;
 
 namespace ProycTm5_API_Singleton.Services
@@ -7,29 +9,40 @@ namespace ProycTm5_API_Singleton.Services
     public class EmpleadoSingletonService : IEmpleadoService
     {
 
-        private static readonly List<Empleado> Empleados = new List<Empleado>();//CC22070: Se inicializa la lista de empleados como una lista vacía
-        private int nextId = 1;//CC22070: Se inicializa el siguiente ID como 1
+        //MM19037: Se cambia de static List<Empleado> a ConcurrentDictionary<int, Empleado> como campo de instancia para permitir acceso seguro desde múltiples hilos en el Singleton
+        private readonly ConcurrentDictionary<int, Empleado> _empleados = new();
+        //MM19037: Se usa un campo de instancia junto con Interlocked para incrementar el ID de forma atómica y evitar condiciones de carrera
+        private int _ultimoId = 0;
 
         public IEnumerable<Empleado> ObtenerTodos()//CC22070: Se devuelve la lista de empleados
         {
-            return Empleados;
+            return _empleados.Values;
         }
 
-        public Empleado ObtenerPorId(int id)//CC22070: Se busca un empleado por su ID, si no se encuentra se lanza una excepción
+        //MM19037: Se cambia el retorno a Empleado? para cumplir con el contrato de la interfaz y evitar lanzar excepciones cuando no se encuentra el empleado
+        public Empleado? ObtenerPorId(int id)
         {
-            return Empleados.Find(e => e.Id == id) ?? throw new InvalidOperationException("Empleado no encontrado");
+            _empleados.TryGetValue(id, out var empleado);
+            return empleado;
         }
 
         public Empleado Crear(Empleado empleado)//CC22070: Se crea un nuevo empleado, se le asigna un ID único y se agrega a la lista de empleados
         {
-            empleado.Id = nextId++;
-            Empleados.Add(empleado);
+            //MM19037: Interlocked.Increment garantiza que la asignación del ID sea atómica aunque varios hilos creen empleados al mismo tiempo
+            int nuevoId = Interlocked.Increment(ref _ultimoId);
+            empleado.Id = nuevoId;
+            _empleados[nuevoId] = empleado;
             return empleado;
         }
 
-        public Empleado Actualizar(int id, Empleado empleadoActualizado)//CC22070: Se actualiza un empleado existente, se buscan los datos del empleado por su ID y se actualizan los campos correspondientes
+        //MM19037: Se maneja el caso en que ObtenerPorId devuelva null, devolviendo null en vez de dejar que una excepción se propague
+        public Empleado? Actualizar(int id, Empleado empleadoActualizado)
         {
-            var empleado = ObtenerPorId(id);            
+            var empleado = ObtenerPorId(id);
+            if (empleado is null)
+            {
+                return null;
+            }
 
             empleado.Nombre = empleadoActualizado.Nombre;
             empleado.Cargo = empleadoActualizado.Cargo;
@@ -38,12 +51,10 @@ namespace ProycTm5_API_Singleton.Services
             return empleado;
         }
 
-        public bool Eliminar(int id)//CC22070: Se elimina un empleado existente, se busca el empleado por su ID y se elimina de la lista de empleados
+        //MM19037: Se usa TryRemove del ConcurrentDictionary para eliminar de forma segura y se devuelve false si el empleado no existe
+        public bool Eliminar(int id)
         {
-            var empleado = ObtenerPorId(id);
-           
-            Empleados.Remove(empleado);
-            return true;
+            return _empleados.TryRemove(id, out _);
         }
 
         public bool AreaEsValida(string area)//CC22070: Se valida si el área del empleado es válida, se compara con una lista de áreas válidas y se devuelve true si es válida o false si no lo es
