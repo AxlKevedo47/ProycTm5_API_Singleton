@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
+using System.Text.Json;
 using ProycTm5_API_Singleton.Models;
 
 namespace ProycTm5_API_Singleton.Services
@@ -10,14 +11,10 @@ namespace ProycTm5_API_Singleton.Services
     {
 
         //MM19037: Se cambia de static List<Empleado> a ConcurrentDictionary<int, Empleado> como campo de instancia para permitir acceso seguro desde múltiples hilos en el Singleton
-        private readonly ConcurrentDictionary<int, Empleado> _empleados = new();
+        private  ConcurrentDictionary<int, Empleado> _empleados = new();
         //MM19037: Se usa un campo de instancia junto con Interlocked para incrementar el ID de forma atómica y evitar condiciones de carrera
         private int _ultimoId = 0;
 
-        public IEnumerable<Empleado> ObtenerTodos()//CC22070: Se devuelve la lista de empleados
-        {
-            return _empleados.Values;
-        }
 
         //MM19037: Se cambia el retorno a Empleado? para cumplir con el contrato de la interfaz y evitar lanzar excepciones cuando no se encuentra el empleado
         public Empleado? ObtenerPorId(int id)
@@ -51,7 +48,7 @@ namespace ProycTm5_API_Singleton.Services
             return empleado;
         }
 
-        //MM19037: Se usa TryRemove del ConcurrentDictionary para eliminar de forma segura y se devuelve false si el empleado no existe
+        
         public bool Eliminar(int id)
         {
             return _empleados.TryRemove(id, out _);
@@ -63,5 +60,66 @@ namespace ProycTm5_API_Singleton.Services
 
             return Array.Exists(AreasValidas, a => a.Equals(area, StringComparison.OrdinalIgnoreCase));
         }
-    }
+
+        private readonly string _rutaArchivo; //CC22070: Se define la ruta del archivo donde se guardarán los empleados
+        private readonly ILogger _logger; //CC22070: Se define un logger para registrar información y errores es decir control de errores
+        private readonly SemaphoreSlim _bloqueo = new(1, 1); //CC22070: Se define un semáforo para controlar el acceso concurrente a la lectura y escritura del archivo
+
+        //CC22070: Se define un JsonSerializerOptions para configurar la serialización y deserialización del json, en este caso se ignora el mayusculas y minusculas del texto
+        private static readonly JsonSerializerOptions _opcionesJson = new()
+        {
+            PropertyNameCaseInsensitive = true
+        };
+        //CC22070: Se define un constructor que recibe el entorno de la aplicación y el logger, y se inicializan los campos correspondientes
+        public EmpleadoSingletonService( IWebHostEnvironment env,ILogger<EmpleadoSingletonService> logger)
+        {
+            _logger = logger;
+            //CC22070: Se construye la ruta del archivo empleados.json a partir del directorio raíz de la aplicación y se asigna al campo _rutaArchivo
+            _rutaArchivo = Path.Combine(env.ContentRootPath, "empleados.json");
+
+            _logger.LogWarning("EmpleadoSingletonService se ha inicializado. Ruta: {Ruta}",_rutaArchivo);
+        }
+
+        public async Task<IEnumerable<Empleado>> ObtenerTodosAsync()
+        {
+            await CargarEmpleados();
+            return _empleados.Values.ToList();
+        }
+        public async Task CargarEmpleados()
+        {
+            //CC22070: Se espera a que el semáforo esté disponible para evitar que varios hilos accedan al archivo al mismo tiempo
+            await _bloqueo.WaitAsync();
+
+            try
+            {                
+                if (File.Exists(_rutaArchivo))
+                {
+                    //CC22070: Se lee el contenido del archivo empleados.json de forma asíncrona 
+                    var contenido = await File.ReadAllTextAsync(_rutaArchivo);
+
+                    //CC22070: Se deserializa el contenido del archivo json a una lista de empleados y se asigna al campo _empleados, si es null se asigna una lista vacía
+                    var empleadoLista = JsonSerializer.Deserialize<List<Empleado>>(contenido, _opcionesJson);
+
+                    // Crear un ConcurrentDictionary a partir de la lista
+                    _empleados = new ConcurrentDictionary<int, Empleado>(empleadoLista.ToDictionary(e => e.Id, e => e));
+
+                    // Opcional: actualizar _ultimoId al máximo Id cargado (evit que Interlocked.Increment cree IDs duplicados)
+                    _ultimoId = _empleados.Keys.DefaultIfEmpty(0).Max();
+
+
+                    //CC22070: Se registra un mensaje de información en el logger indicando que los empleados se cargaron correctamente desde el archivo
+                    _logger.LogInformation("Empleados cargados desde el archivo: {RutaArchivo}", _rutaArchivo);
+                }
+                _logger.LogWarning("El archivo JSON no existe en: {Ruta}", _rutaArchivo);
+            }//CC22070: Se captura cualquier excepción que ocurra durante la carga de empleados y se registra un error en el logger
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al cargar los empleados desde el archivo.");
+            }
+            finally
+            {
+                _bloqueo.Release();
+            }
+        }
+     }
 }

@@ -4,7 +4,6 @@ namespace ProycTm5_API_Singleton.Services;
 
 public interface IEmpleadoService
 {
-    IEnumerable<Empleado> ObtenerTodos();
 
     Empleado? ObtenerPorId(int id);
 
@@ -15,4 +14,5 @@ public interface IEmpleadoService
     bool Eliminar(int id);
 
     bool AreaEsValida(string area);
+    Task<IEnumerable<Empleado>> ObtenerTodosAsync();    
 }

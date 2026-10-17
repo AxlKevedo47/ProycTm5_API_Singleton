@@ -17,12 +17,10 @@ public class EmpleadosController : ControllerBase
         _empleadoService = empleadoService;
     }
 
-    [HttpGet]
-    public ActionResult<IEnumerable<Empleado>> ObtenerTodos()
-    {
-        //MM19037: Se delega la obtención de empleados al servicio
-        return Ok(_empleadoService.ObtenerTodos());
-    }
+    [HttpGet]    
+    //CC22070: Se cambia el método ObtenerTodos para que sea asincrónico y devuelva una tarea
+    public async Task<ActionResult<IEnumerable<Empleado>>> Get() => Ok(await _empleadoService.ObtenerTodosAsync());
+
 
     [HttpGet("{id:int}")]
     public ActionResult<Empleado> ObtenerPorId(int id)
@@ -69,5 +67,5 @@ public class EmpleadosController : ControllerBase
         var eliminado = _empleadoService.Eliminar(id);
 
         return eliminado ? NoContent() : NotFound();
-    }
+    }    
 }
