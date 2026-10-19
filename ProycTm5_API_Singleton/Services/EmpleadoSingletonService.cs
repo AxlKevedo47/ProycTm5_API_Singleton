@@ -19,39 +19,106 @@ namespace ProycTm5_API_Singleton.Services
         //MM19037: Se cambia el retorno a Empleado? para cumplir con el contrato de la interfaz y evitar lanzar excepciones cuando no se encuentra el empleado
         public Empleado? ObtenerPorId(int id)
         {
-            _empleados.TryGetValue(id, out var empleado);
-            return empleado;
+            _bloqueo.Wait();
+            try
+            {
+                return _empleados.TryGetValue(id, out var empleado)
+                    ? ClonarEmpleado(empleado)
+                    : null;
+            }
+            finally
+            {
+                _bloqueo.Release();
+            }
         }
 
         public Empleado Crear(Empleado empleado)//CC22070: Se crea un nuevo empleado, se le asigna un ID único y se agrega a la lista de empleados
         {
-            //MM19037: Interlocked.Increment garantiza que la asignación del ID sea atómica aunque varios hilos creen empleados al mismo tiempo
-            int nuevoId = Interlocked.Increment(ref _ultimoId);
-            empleado.Id = nuevoId;
-            _empleados[nuevoId] = empleado;
-            return empleado;
+            _bloqueo.Wait();
+            try
+            {
+                //MM19037: Interlocked.Increment garantiza que la asignación del ID sea atómica aunque varios hilos creen empleados al mismo tiempo
+                int nuevoId = Interlocked.Increment(ref _ultimoId);
+                var empleadoCreado = ClonarEmpleado(empleado);
+                empleadoCreado.Id = nuevoId;
+                _empleados[nuevoId] = empleadoCreado;
+
+                try
+                {
+                    GuardarEmpleados();
+                    return ClonarEmpleado(empleadoCreado);
+                }
+                catch
+                {
+                    _empleados.TryRemove(nuevoId, out _);
+                    throw;
+                }
+            }
+            finally
+            {
+                _bloqueo.Release();
+            }
         }
 
         //MM19037: Se maneja el caso en que ObtenerPorId devuelva null, devolviendo null en vez de dejar que una excepción se propague
         public Empleado? Actualizar(int id, Empleado empleadoActualizado)
         {
-            var empleado = ObtenerPorId(id);
-            if (empleado is null)
+            _bloqueo.Wait();
+            try
             {
-                return null;
+                if (!_empleados.TryGetValue(id, out var empleado))
+                {
+                    return null;
+                }
+
+                var empleadoAnterior = ClonarEmpleado(empleado);
+                var empleadoNuevo = ClonarEmpleado(empleadoActualizado);
+                empleadoNuevo.Id = id;
+                _empleados[id] = empleadoNuevo;
+
+                try
+                {
+                    GuardarEmpleados();
+                    return ClonarEmpleado(empleadoNuevo);
+                }
+                catch
+                {
+                    _empleados[id] = empleadoAnterior;
+                    throw;
+                }
             }
-
-            empleado.Nombre = empleadoActualizado.Nombre;
-            empleado.Cargo = empleadoActualizado.Cargo;
-            empleado.Area = empleadoActualizado.Area;
-
-            return empleado;
+            finally
+            {
+                _bloqueo.Release();
+            }
         }
 
         
         public bool Eliminar(int id)
         {
-            return _empleados.TryRemove(id, out _);
+            _bloqueo.Wait();
+            try
+            {
+                if (!_empleados.TryRemove(id, out var eliminado))
+                {
+                    return false;
+                }
+
+                try
+                {
+                    GuardarEmpleados();
+                    return true;
+                }
+                catch
+                {
+                    _empleados[id] = eliminado;
+                    throw;
+                }
+            }
+            finally
+            {
+                _bloqueo.Release();
+            }
         }
 
         public bool AreaEsValida(string area)//CC22070: Se valida si el área del empleado es válida, se compara con una lista de áreas válidas y se devuelve true si es válida o false si no lo es
@@ -64,6 +131,7 @@ namespace ProycTm5_API_Singleton.Services
         private readonly string _rutaArchivo; //CC22070: Se define la ruta del archivo donde se guardarán los empleados
         private readonly ILogger _logger; //CC22070: Se define un logger para registrar información y errores es decir control de errores
         private readonly SemaphoreSlim _bloqueo = new(1, 1); //CC22070: Se define un semáforo para controlar el acceso concurrente a la lectura y escritura del archivo
+        private bool _estadoInicializado;
 
         //CC22070: Se define un JsonSerializerOptions para configurar la serialización y deserialización del json, en este caso se ignora el mayusculas y minusculas del texto
         private static readonly JsonSerializerOptions _opcionesJson = new()
@@ -78,12 +146,21 @@ namespace ProycTm5_API_Singleton.Services
             _rutaArchivo = Path.Combine(env.ContentRootPath, "empleados.json");
 
             _logger.LogWarning("EmpleadoSingletonService se ha inicializado. Ruta: {Ruta}",_rutaArchivo);
+            CargarEmpleados().GetAwaiter().GetResult();
         }
 
-        public async Task<IEnumerable<Empleado>> ObtenerTodosAsync()
+        public Task<IEnumerable<Empleado>> ObtenerTodosAsync()
         {
-            await CargarEmpleados();
-            return _empleados.Values.ToList();
+            _bloqueo.Wait();
+            try
+            {
+                return Task.FromResult<IEnumerable<Empleado>>(
+                    _empleados.Values.Select(ClonarEmpleado).ToList());
+            }
+            finally
+            {
+                _bloqueo.Release();
+            }
         }
         public async Task CargarEmpleados()
         {
@@ -92,13 +169,18 @@ namespace ProycTm5_API_Singleton.Services
 
             try
             {                
+                if (_estadoInicializado)
+                {
+                    return;
+                }
+
                 if (File.Exists(_rutaArchivo))
                 {
                     //CC22070: Se lee el contenido del archivo empleados.json de forma asíncrona 
                     var contenido = await File.ReadAllTextAsync(_rutaArchivo);
 
                     //CC22070: Se deserializa el contenido del archivo json a una lista de empleados y se asigna al campo _empleados, si es null se asigna una lista vacía
-                    var empleadoLista = JsonSerializer.Deserialize<List<Empleado>>(contenido, _opcionesJson);
+                    var empleadoLista = JsonSerializer.Deserialize<List<Empleado>>(contenido, _opcionesJson) ?? new List<Empleado>();
 
                     // Crear un ConcurrentDictionary a partir de la lista
                     _empleados = new ConcurrentDictionary<int, Empleado>(empleadoLista.ToDictionary(e => e.Id, e => e));
@@ -110,16 +192,65 @@ namespace ProycTm5_API_Singleton.Services
                     //CC22070: Se registra un mensaje de información en el logger indicando que los empleados se cargaron correctamente desde el archivo
                     _logger.LogInformation("Empleados cargados desde el archivo: {RutaArchivo}", _rutaArchivo);
                 }
-                _logger.LogWarning("El archivo JSON no existe en: {Ruta}", _rutaArchivo);
+                else
+                {
+                    await File.WriteAllTextAsync(_rutaArchivo, "[]");
+                    _logger.LogInformation("Se creó el archivo JSON inicial en: {Ruta}", _rutaArchivo);
+                }
+
+                _estadoInicializado = true;
             }//CC22070: Se captura cualquier excepción que ocurra durante la carga de empleados y se registra un error en el logger
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al cargar los empleados desde el archivo.");
+                throw new InvalidOperationException(
+                    $"No se pudieron cargar los empleados desde '{_rutaArchivo}'.", ex);
             }
             finally
             {
                 _bloqueo.Release();
             }
+        }
+
+        private void GuardarEmpleados()
+        {
+            var contenido = JsonSerializer.Serialize(_empleados.Values.ToList(), _opcionesJson);
+            var archivoTemporal = _rutaArchivo + ".tmp";
+
+            try
+            {
+                File.WriteAllText(archivoTemporal, contenido);
+                File.Move(archivoTemporal, _rutaArchivo, true);
+                _logger.LogInformation("Empleados guardados en el archivo: {RutaArchivo}", _rutaArchivo);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error al guardar los empleados en el archivo.");
+                try
+                {
+                    if (File.Exists(archivoTemporal))
+                    {
+                        File.Delete(archivoTemporal);
+                    }
+                }
+                catch (Exception cleanupException)
+                {
+                    _logger.LogError(cleanupException, "Error al limpiar el archivo temporal de empleados.");
+                }
+
+                throw;
+            }
+        }
+
+        private static Empleado ClonarEmpleado(Empleado empleado)
+        {
+            return new Empleado
+            {
+                Id = empleado.Id,
+                Nombre = empleado.Nombre,
+                Cargo = empleado.Cargo,
+                Area = empleado.Area
+            };
         }
      }
 }
