@@ -17,8 +17,8 @@ public class EmpleadosController : ControllerBase
         _empleadoService = empleadoService;
     }
 
-    [HttpGet]    
-    //CC22070: Se cambia el método ObtenerTodos para que sea asincrónico y devuelva una tarea
+    [HttpGet]
+    //CC22070: método ObtenerTodos que devuelve todos los empleados de forma asíncrona facilitando la atención de otras solicitudes simultáneas
     public async Task<ActionResult<IEnumerable<Empleado>>> Get() => Ok(await _empleadoService.ObtenerTodosAsync());
 
 

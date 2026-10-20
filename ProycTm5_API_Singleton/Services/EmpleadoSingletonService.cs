@@ -133,7 +133,7 @@ namespace ProycTm5_API_Singleton.Services
         private readonly SemaphoreSlim _bloqueo = new(1, 1); //CC22070: Se define un semáforo para controlar el acceso concurrente a la lectura y escritura del archivo
         private bool _estadoInicializado;
 
-        //CC22070: Se define un JsonSerializerOptions para configurar la serialización y deserialización del json, en este caso se ignora el mayusculas y minusculas del texto
+        //CC22070: Se define un JsonSerializerOptions para configurar la  deserialización del json, en este caso se ignora el mayusculas y minusculas del texto
         private static readonly JsonSerializerOptions _opcionesJson = new()
         {
             PropertyNameCaseInsensitive = true
@@ -148,7 +148,7 @@ namespace ProycTm5_API_Singleton.Services
             _logger.LogWarning("EmpleadoSingletonService se ha inicializado. Ruta: {Ruta}",_rutaArchivo);
             CargarEmpleados().GetAwaiter().GetResult();
         }
-
+        //CC22070: Se define un método que devuelve todos los empleados cargados desde el archivo json, si no se han cargado aún, se llama a CargarEmpleados
         public Task<IEnumerable<Empleado>> ObtenerTodosAsync()
         {
             _bloqueo.Wait();
@@ -162,6 +162,7 @@ namespace ProycTm5_API_Singleton.Services
                 _bloqueo.Release();
             }
         }
+        //CC22070: Se define un método que carga los empleados desde el archivo json de forma asíncrona, usando un semáforo para evitar accesos concurrentes
         public async Task CargarEmpleados()
         {
             //CC22070: Se espera a que el semáforo esté disponible para evitar que varios hilos accedan al archivo al mismo tiempo
@@ -179,13 +180,13 @@ namespace ProycTm5_API_Singleton.Services
                     //CC22070: Se lee el contenido del archivo empleados.json de forma asíncrona 
                     var contenido = await File.ReadAllTextAsync(_rutaArchivo);
 
-                    //CC22070: Se deserializa el contenido del archivo json a una lista de empleados y se asigna al campo _empleados, si es null se asigna una lista vacía
+                    //CC22070: Se convierten los datos del contenido del archivo json en objetos para poder utilizarlos y se asigna al campo _empleados
                     var empleadoLista = JsonSerializer.Deserialize<List<Empleado>>(contenido, _opcionesJson) ?? new List<Empleado>();
 
                     // Crear un ConcurrentDictionary a partir de la lista
                     _empleados = new ConcurrentDictionary<int, Empleado>(empleadoLista.ToDictionary(e => e.Id, e => e));
 
-                    // Opcional: actualizar _ultimoId al máximo Id cargado (evit que Interlocked.Increment cree IDs duplicados)
+                    // CC22070: actualizar _ultimoId al máximo Id cargado, evita que Interlocked.Increment cree IDs duplicados
                     _ultimoId = _empleados.Keys.DefaultIfEmpty(0).Max();
 
 
