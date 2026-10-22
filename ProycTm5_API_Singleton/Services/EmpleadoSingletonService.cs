@@ -10,13 +10,13 @@ namespace ProycTm5_API_Singleton.Services
     public class EmpleadoSingletonService : IEmpleadoService
     {
 
-        //MM19037: Se cambia de static List<Empleado> a ConcurrentDictionary<int, Empleado> como campo de instancia para permitir acceso seguro desde múltiples hilos en el Singleton
+        //MM19037: Diccionario en memoria con los empleados indexados por Id; es el estado compartido por la única instancia Singleton del servicio
         private  ConcurrentDictionary<int, Empleado> _empleados = new();
-        //MM19037: Se usa un campo de instancia junto con Interlocked para incrementar el ID de forma atómica y evitar condiciones de carrera
+        //MM19037: Guarda el último Id asignado, usado como base para generar el siguiente de forma atómica
         private int _ultimoId = 0;
 
 
-        //MM19037: Se cambia el retorno a Empleado? para cumplir con el contrato de la interfaz y evitar lanzar excepciones cuando no se encuentra el empleado
+        //MM19037: Busca un empleado por Id bajo el semáforo y devuelve una copia; si no existe, devuelve null
         public Empleado? ObtenerPorId(int id)
         {
             _bloqueo.Wait();
@@ -37,7 +37,7 @@ namespace ProycTm5_API_Singleton.Services
             _bloqueo.Wait();
             try
             {
-                //MM19037: Interlocked.Increment garantiza que la asignación del ID sea atómica aunque varios hilos creen empleados al mismo tiempo
+                //MM19037: Genera el nuevo Id de forma atómica a partir del último asignado
                 int nuevoId = Interlocked.Increment(ref _ultimoId);
                 var empleadoCreado = ClonarEmpleado(empleado);
                 empleadoCreado.Id = nuevoId;
@@ -60,7 +60,7 @@ namespace ProycTm5_API_Singleton.Services
             }
         }
 
-        //MM19037: Se maneja el caso en que ObtenerPorId devuelva null, devolviendo null en vez de dejar que una excepción se propague
+        //MM19037: Actualiza los campos de un empleado existente y persiste el cambio; devuelve null si el Id no existe
         public Empleado? Actualizar(int id, Empleado empleadoActualizado)
         {
             _bloqueo.Wait();
