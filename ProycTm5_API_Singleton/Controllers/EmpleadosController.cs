@@ -2,8 +2,9 @@ using Microsoft.AspNetCore.Mvc;
 using ProycTm5_API_Singleton.Models;
 using ProycTm5_API_Singleton.Services;
 
-namespace ProycTm5_API_Singleton.Controllers;   // JQ203: Se Plantea el CRUD
+namespace ProycTm5_API_Singleton.Controllers;
 
+// JQ22003: Controlador que expone las operaciones CRUD de empleados
 [ApiController]
 [Route("api/[controller]")]
 public class EmpleadosController : ControllerBase
@@ -18,7 +19,7 @@ public class EmpleadosController : ControllerBase
     }
 
     [HttpGet]
-    //CC22070: método ObtenerTodos que devuelve todos los empleados de forma asíncrona facilitando la atención de otras solicitudes simultáneas
+    //CC22070: Método ObtenerTodos que devuelve todos los empleados de forma asíncrona facilitando la atención de otras solicitudes simultáneas
     public async Task<ActionResult<IEnumerable<Empleado>>> Get() => Ok(await _empleadoService.ObtenerTodosAsync());
 
 

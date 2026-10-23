@@ -2,6 +2,7 @@
 
 namespace ProycTm5_API_Singleton.Services;
 
+//LG22018: Define el contrato del servicio de empleados
 public interface IEmpleadoService
 {
 

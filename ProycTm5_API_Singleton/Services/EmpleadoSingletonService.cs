@@ -32,7 +32,7 @@ namespace ProycTm5_API_Singleton.Services
             }
         }
 
-        public Empleado Crear(Empleado empleado)//CC22070: Se crea un nuevo empleado, se le asigna un ID único y se agrega a la lista de empleados
+        public Empleado Crear(Empleado empleado) //CC22070: Se crea un nuevo empleado, se le asigna un ID único y se agrega a la lista de empleados
         {
             _bloqueo.Wait();
             try
@@ -121,7 +121,7 @@ namespace ProycTm5_API_Singleton.Services
             }
         }
 
-        public bool AreaEsValida(string area)//CC22070: Se valida si el área del empleado es válida, se compara con una lista de áreas válidas y se devuelve true si es válida o false si no lo es
+        public bool AreaEsValida(string area) //CC22070: Se valida si el área del empleado es válida, se compara con una lista de áreas válidas y se devuelve true si es válida o false si no lo es
         {
             string[] AreasValidas = new[] { "Ventas", "Producción", "Transporte", "Marketing" };
 
@@ -133,7 +133,7 @@ namespace ProycTm5_API_Singleton.Services
         private readonly SemaphoreSlim _bloqueo = new(1, 1); //CC22070: Se define un semáforo para controlar el acceso concurrente a la lectura y escritura del archivo
         private bool _estadoInicializado;
 
-        //CC22070: Se define un JsonSerializerOptions para configurar la  deserialización del json, en este caso se ignora el mayusculas y minusculas del texto
+        //CC22070: Se define un JsonSerializerOptions para configurar la deserialización del JSON, en este caso se ignoran las mayúsculas y minúsculas del texto
         private static readonly JsonSerializerOptions _opcionesJson = new()
         {
             PropertyNameCaseInsensitive = true
@@ -148,7 +148,7 @@ namespace ProycTm5_API_Singleton.Services
             _logger.LogWarning("EmpleadoSingletonService se ha inicializado. Ruta: {Ruta}",_rutaArchivo);
             CargarEmpleados().GetAwaiter().GetResult();
         }
-        //CC22070: Se define un método que devuelve todos los empleados cargados desde el archivo json, si no se han cargado aún, se llama a CargarEmpleados
+        //CC22070: Se define un método que devuelve todos los empleados cargados desde el archivo JSON, si no se han cargado aún, se llama a CargarEmpleados
         public Task<IEnumerable<Empleado>> ObtenerTodosAsync()
         {
             _bloqueo.Wait();
@@ -162,7 +162,7 @@ namespace ProycTm5_API_Singleton.Services
                 _bloqueo.Release();
             }
         }
-        //CC22070: Se define un método que carga los empleados desde el archivo json de forma asíncrona, usando un semáforo para evitar accesos concurrentes
+        //CC22070: Se define un método que carga los empleados desde el archivo JSON de forma asíncrona, usando un semáforo para evitar accesos concurrentes
         public async Task CargarEmpleados()
         {
             //CC22070: Se espera a que el semáforo esté disponible para evitar que varios hilos accedan al archivo al mismo tiempo
@@ -180,7 +180,7 @@ namespace ProycTm5_API_Singleton.Services
                     //CC22070: Se lee el contenido del archivo empleados.json de forma asíncrona 
                     var contenido = await File.ReadAllTextAsync(_rutaArchivo);
 
-                    //CC22070: Se convierten los datos del contenido del archivo json en objetos para poder utilizarlos y se asigna al campo _empleados
+                    //CC22070: Se convierten los datos del contenido del archivo JSON en objetos para poder utilizarlos y se asigna al campo _empleados
                     var empleadoLista = JsonSerializer.Deserialize<List<Empleado>>(contenido, _opcionesJson) ?? new List<Empleado>();
 
                     // Crear un ConcurrentDictionary a partir de la lista
@@ -200,7 +200,7 @@ namespace ProycTm5_API_Singleton.Services
                 }
 
                 _estadoInicializado = true;
-            }//CC22070: Se captura cualquier excepción que ocurra durante la carga de empleados y se registra un error en el logger
+            } //CC22070: Se captura cualquier excepción que ocurra durante la carga de empleados y se registra un error en el logger
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error al cargar los empleados desde el archivo.");
